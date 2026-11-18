@@ -31,6 +31,60 @@ from rivals import (
 )
 from rivals.settings import DECISION_COLUMNS
 
+st.set_page_config(layout="wide")
+st.title("Salt City: Prices and Gaps")
+
+if not os.path.exists(MENUS_FILE):
+    st.info("No menus yet — scrape them on the Scrape page first.")
+    st.stop()
+
+menus = pd.read_csv(MENUS_FILE)
+if os.path.exists(DECISIONS_FILE):
+    decisions = pd.read_csv(DECISIONS_FILE)
+else:
+    decisions = pd.DataFrame(columns=DECISION_COLUMNS)
+matches = match_items(menus, decisions)
+waiting = int((matches["status"] == "unreviewed").sum())
+if waiting:
+    st.warning(
+        f"{waiting} rival items still need review and are left out of the analysis. "
+        "Finish them on the Review Matches page."
+    )
+
+menus = add_canonical(menus, matches)
+prices = price_table(menus)
+comparison = compare_prices(prices)
+gaps = gap_analysis(menus)
+prices_tab, gaps_tab = st.tabs(["Prices", "Gaps"])
+
+with prices_tab:
+    below = comparison["our_position"].isin([BELOW_ALL, BELOW_AVERAGE])
+    above = comparison["our_position"].isin([ABOVE_ALL, ABOVE_AVERAGE])
+    below_column, above_column = st.columns(2)
+    below_column.metric("Priced below the market", int(below.sum()))
+    above_column.metric("Priced above the market", int(above.sum()))
+
+    products = st.multiselect(
+        "Products",
+        sorted(comparison["canonical"].unique()),
+        key="products",
+        placeholder="All products",
+    )
+    shown = (
+        comparison[comparison["canonical"].isin(products)] if products else comparison
+    )
+    st.dataframe(shown, hide_index=True)
+    st.caption(
+        "👍👍 lower than all of them · 👍 lower than their average · 👉👈 average · "
+        "👎 higher than their average · 👎👎 higher than all of them"
+    )
+
+with gaps_tab:
+    st.subheader("Only them — what we don't sell yet")
+    st.dataframe(gaps[gaps["where"] == "only them"], hide_index=True)
+    st.subheader("Only us — what sets us apart")
+    st.dataframe(gaps[gaps["where"] == "only us"], hide_index=True)
+
 # --- The page: the algorithm, step by step ------------------------------------------
 #
 # Write the code for each step below its comment. The tests
